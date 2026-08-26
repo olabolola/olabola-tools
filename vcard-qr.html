@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Create a clean QR code that adds your details directly to a phone's contacts.">
+    <title>Contact QR Code</title>
+    <style>
+        :root {
+            color-scheme: light dark;
+            --bg: #f6f7f9;
+            --panel: #fff;
+            --text: #202124;
+            --muted: #687078;
+            --border: #d8dde3;
+            --accent: #1769e0;
+            --accent-hover: #0f56bc;
+            --danger: #b42318;
+            --success: #1b7f45;
+            --focus: #8ab4f8;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--text);
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            line-height: 1.5;
+        }
+
+        main {
+            width: min(1040px, calc(100% - 32px));
+            margin: 56px auto;
+        }
+
+        h1 { margin: 0 0 6px; font-size: clamp(2rem, 7vw, 3rem); line-height: 1.1; }
+        .intro { margin: 0 0 28px; color: var(--muted); }
+
+        .workspace {
+            display: grid;
+            grid-template-columns: minmax(0, 1.15fr) minmax(300px, 0.85fr);
+            gap: 20px;
+            align-items: start;
+        }
+
+        .panel {
+            padding: 22px;
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            background: var(--panel);
+            box-shadow: 0 10px 30px rgba(32, 33, 36, 0.07);
+        }
+
+        h2 { margin: 0 0 18px; font-size: 1.15rem; }
+        .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .field { min-width: 0; }
+        .field.full { grid-column: 1 / -1; }
+
+        label {
+            display: block;
+            margin-bottom: 6px;
+            font-size: 0.9rem;
+            font-weight: 650;
+        }
+
+        .optional { color: var(--muted); font-size: 0.78rem; font-weight: 450; }
+
+        input, textarea {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            border-radius: 7px;
+            background: var(--panel);
+            color: var(--text);
+            font: inherit;
+        }
+
+        textarea { min-height: 76px; resize: vertical; }
+        input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--muted) 75%, transparent); }
+        input:focus-visible, textarea:focus-visible, button:focus-visible, summary:focus-visible {
+            outline: 3px solid var(--focus);
+            outline-offset: 2px;
+        }
+
+        details { grid-column: 1 / -1; border-top: 1px solid var(--border); padding-top: 15px; }
+        summary { width: fit-content; color: var(--accent); font-weight: 650; cursor: pointer; }
+        details .field-grid { margin-top: 16px; }
+
+        button {
+            min-height: 42px;
+            padding: 9px 16px;
+            border: 0;
+            border-radius: 7px;
+            background: var(--accent);
+            color: white;
+            font: inherit;
+            font-weight: 650;
+            cursor: pointer;
+        }
+
+        button:hover:not(:disabled) { background: var(--accent-hover); }
+        button:disabled { cursor: not-allowed; opacity: 0.48; }
+        .secondary { border: 1px solid var(--border); background: var(--panel); color: var(--text); }
+        .secondary:hover:not(:disabled) { background: color-mix(in srgb, var(--text) 7%, var(--panel)); }
+        .generate { width: 100%; margin-top: 20px; }
+
+        .qr-panel { position: sticky; top: 20px; text-align: center; }
+        .qr-stage {
+            display: grid;
+            min-height: 320px;
+            place-items: center;
+            padding: 18px;
+            border: 1px dashed var(--border);
+            border-radius: 10px;
+            background: #fff;
+        }
+
+        #qr-canvas { display: none; width: min(100%, 280px); height: auto; image-rendering: pixelated; }
+        .empty-state { max-width: 220px; color: #687078; font-size: 0.92rem; }
+        .empty-icon { display: block; margin-bottom: 10px; color: #aab1b8; font-size: 3rem; line-height: 1; }
+        .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+        .actions .wide { grid-column: 1 / -1; }
+        #status { min-height: 22px; margin: 12px 0 0; color: var(--muted); font-size: 0.86rem; }
+        #status.error { color: var(--danger); }
+        #status.success { color: var(--success); }
+        .privacy { margin: 20px 0 0; color: var(--muted); font-size: 0.82rem; text-align: center; }
+        footer { margin-top: 24px; color: var(--muted); font-size: 0.82rem; text-align: center; }
+        footer a { color: inherit; }
+
+        @media (max-width: 760px) {
+            main { margin: 28px auto; }
+            .workspace { grid-template-columns: 1fr; }
+            .qr-panel { position: static; }
+        }
+
+        @media (max-width: 520px) {
+            .panel { padding: 15px; }
+            .field-grid, details .field-grid { grid-template-columns: 1fr; }
+            .field.full, details { grid-column: auto; }
+            .actions { grid-template-columns: 1fr; }
+            .actions .wide { grid-column: auto; }
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg: #15171a;
+                --panel: #202327;
+                --text: #f1f3f4;
+                --muted: #aab1b8;
+                --border: #454b52;
+                --success: #62ca8c;
+            }
+        }
+    </style>
+</head>
+<body>
+    <main>
+        <h1>Contact QR Code</h1>
+        <p class="intro">Make a clean QR code people can scan to add you to their contacts.</p>
+
+        <div class="workspace">
+            <form class="panel" id="contact-form">
+                <h2>Your contact details</h2>
+                <div class="field-grid">
+                    <div class="field">
+                        <label for="first-name">First name</label>
+                        <input id="first-name" name="firstName" autocomplete="given-name" required>
+                    </div>
+                    <div class="field">
+                        <label for="last-name">Last name <span class="optional">optional</span></label>
+                        <input id="last-name" name="lastName" autocomplete="family-name">
+                    </div>
+                    <div class="field">
+                        <label for="phone">Phone <span class="optional">optional</span></label>
+                        <input id="phone" name="phone" type="tel" autocomplete="tel" inputmode="tel" placeholder="+64 21 123 4567">
+                    </div>
+                    <div class="field">
+                        <label for="email">Email <span class="optional">optional</span></label>
+                        <input id="email" name="email" type="email" autocomplete="email" placeholder="you@example.com">
+                    </div>
+                    <div class="field">
+                        <label for="company">Company <span class="optional">optional</span></label>
+                        <input id="company" name="company" autocomplete="organization">
+                    </div>
+                    <div class="field">
+                        <label for="job-title">Job title <span class="optional">optional</span></label>
+                        <input id="job-title" name="jobTitle" autocomplete="organization-title">
+                    </div>
+                    <div class="field full">
+                        <label for="website">Website <span class="optional">optional</span></label>
+                        <input id="website" name="website" type="url" autocomplete="url" inputmode="url" placeholder="https://example.com">
+                    </div>
+
+                    <details>
+                        <summary>Add address or note</summary>
+                        <div class="field-grid">
+                            <div class="field full">
+                                <label for="street">Street address <span class="optional">optional</span></label>
+                                <input id="street" name="street" autocomplete="street-address">
+                            </div>
+                            <div class="field">
+                                <label for="city">City <span class="optional">optional</span></label>
+                                <input id="city" name="city" autocomplete="address-level2">
+                            </div>
+                            <div class="field">
+                                <label for="region">State / region <span class="optional">optional</span></label>
+                                <input id="region" name="region" autocomplete="address-level1">
+                            </div>
+                            <div class="field">
+                                <label for="postal-code">Postcode <span class="optional">optional</span></label>
+                                <input id="postal-code" name="postalCode" autocomplete="postal-code">
+                            </div>
+                            <div class="field">
+                                <label for="country">Country <span class="optional">optional</span></label>
+                                <input id="country" name="country" autocomplete="country-name">
+                            </div>
+                            <div class="field full">
+                                <label for="note">Note <span class="optional">optional</span></label>
+                                <textarea id="note" name="note" placeholder="Anything useful to include with the contact"></textarea>
+                            </div>
+                        </div>
+                    </details>
+                </div>
+                <button class="generate" type="submit">Generate QR code</button>
+            </form>
+
+            <section class="panel qr-panel" aria-labelledby="qr-title">
+                <h2 id="qr-title">Your QR code</h2>
+                <div class="qr-stage">
+                    <canvas id="qr-canvas" aria-label="QR code containing your contact details"></canvas>
+                    <div class="empty-state" id="empty-state">
+                        <span class="empty-icon" aria-hidden="true">▦</span>
+                        Fill in your name, then generate your contact QR code.
+                    </div>
+                </div>
+                <div class="actions">
+                    <button id="copy-png" type="button" disabled>Copy image</button>
+                    <button id="download-png" type="button" disabled>Download PNG</button>
+                    <button class="secondary wide" id="download-vcf" type="button" disabled>Download contact file (.vcf)</button>
+                </div>
+                <p id="status" role="status" aria-live="polite"></p>
+                <p class="privacy">Your details stay in this browser. Nothing is uploaded.</p>
+            </section>
+        </div>
+
+        <footer>
+            The QR contains a standard vCard directly—no logo, tracking link, or expiry.
+        </footer>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+    <script>
+        const form = document.querySelector('#contact-form');
+        const canvas = document.querySelector('#qr-canvas');
+        const emptyState = document.querySelector('#empty-state');
+        const status = document.querySelector('#status');
+        const copyPngButton = document.querySelector('#copy-png');
+        const downloadPngButton = document.querySelector('#download-png');
+        const downloadVcfButton = document.querySelector('#download-vcf');
+        let currentVcard = '';
+        let updateTimer;
+
+        form.addEventListener('submit', event => {
+            event.preventDefault();
+            if (!form.reportValidity()) return;
+            generate();
+        });
+
+        form.addEventListener('input', () => {
+            if (!currentVcard) return;
+            clearTimeout(updateTimer);
+            updateTimer = setTimeout(() => {
+                if (form.checkValidity()) generate('Updated');
+            }, 180);
+        });
+
+        copyPngButton.addEventListener('click', copyPng);
+        downloadPngButton.addEventListener('click', () => downloadDataUrl(canvas.toDataURL('image/png'), `${safeFilename()}.png`));
+        downloadVcfButton.addEventListener('click', downloadVcard);
+
+        function generate(message = 'Ready to scan') {
+            if (typeof qrcode !== 'function') {
+                setStatus('The QR code library could not load. Check your connection and refresh.', 'error');
+                return;
+            }
+
+            currentVcard = createVcard();
+
+            try {
+                const qr = qrcode(0, 'M');
+                qr.addData(currentVcard, 'Byte');
+                qr.make();
+                drawQr(qr);
+                canvas.style.display = 'block';
+                emptyState.hidden = true;
+                copyPngButton.disabled = false;
+                downloadPngButton.disabled = false;
+                downloadVcfButton.disabled = false;
+                setStatus(message, 'success');
+            } catch (error) {
+                currentVcard = '';
+                setStatus('That is too much information for one QR code. Shorten the note or address and try again.', 'error');
+            }
+        }
+
+        function createVcard() {
+            const data = new FormData(form);
+            const get = name => String(data.get(name) || '').trim();
+            const firstName = get('firstName');
+            const lastName = get('lastName');
+            const fullName = [firstName, lastName].filter(Boolean).join(' ');
+            const lines = [
+                'BEGIN:VCARD',
+                'VERSION:3.0',
+                `N:${vcardEscape(lastName)};${vcardEscape(firstName)};;;`,
+                `FN:${vcardEscape(fullName)}`
+            ];
+
+            addLine(lines, 'ORG', get('company'));
+            addLine(lines, 'TITLE', get('jobTitle'));
+            addLine(lines, 'TEL;TYPE=CELL', get('phone'));
+            addLine(lines, 'EMAIL;TYPE=INTERNET', get('email'));
+            addLine(lines, 'URL', normaliseUrl(get('website')));
+
+            const address = ['','', get('street'), get('city'), get('region'), get('postalCode'), get('country')];
+            if (address.some(Boolean)) lines.push(`ADR;TYPE=WORK:${address.map(vcardEscape).join(';')}`);
+            addLine(lines, 'NOTE', get('note'));
+            lines.push('END:VCARD');
+            return lines.join('\r\n');
+        }
+
+        function addLine(lines, key, value) {
+            if (value) lines.push(`${key}:${vcardEscape(value)}`);
+        }
+
+        function vcardEscape(value) {
+            return String(value)
+                .replace(/\\/g, '\\\\')
+                .replace(/\r?\n/g, '\\n')
+                .replace(/;/g, '\\;')
+                .replace(/,/g, '\\,');
+        }
+
+        function normaliseUrl(value) {
+            if (!value || /^[a-z][a-z\d+.-]*:/i.test(value)) return value;
+            return `https://${value}`;
+        }
+
+        function drawQr(qr) {
+            const modules = qr.getModuleCount();
+            const quietModules = 4;
+            const cell = Math.max(1, Math.floor(1024 / (modules + quietModules * 2)));
+            const size = (modules + quietModules * 2) * cell;
+            const context = canvas.getContext('2d');
+            canvas.width = size;
+            canvas.height = size;
+            context.imageSmoothingEnabled = false;
+            context.fillStyle = '#fff';
+            context.fillRect(0, 0, size, size);
+            context.fillStyle = '#000';
+
+            for (let row = 0; row < modules; row++) {
+                for (let column = 0; column < modules; column++) {
+                    if (qr.isDark(row, column)) {
+                        context.fillRect((column + quietModules) * cell, (row + quietModules) * cell, cell, cell);
+                    }
+                }
+            }
+        }
+
+        async function copyPng() {
+            if (!navigator.clipboard || typeof ClipboardItem === 'undefined') {
+                setStatus('Image copying is not supported here. Use Download PNG instead.', 'error');
+                return;
+            }
+
+            try {
+                const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+                await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+                setStatus('QR image copied', 'success');
+            } catch (error) {
+                setStatus('Could not copy the image. Use Download PNG instead.', 'error');
+            }
+        }
+
+        function downloadVcard() {
+            const blob = new Blob([currentVcard], { type: 'text/vcard;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            downloadDataUrl(url, `${safeFilename()}.vcf`);
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }
+
+        function downloadDataUrl(url, filename) {
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+        }
+
+        function safeFilename() {
+            const firstName = form.elements.firstName.value.trim();
+            const lastName = form.elements.lastName.value.trim();
+            return [firstName, lastName].filter(Boolean).join('-')
+                .normalize('NFKD')
+                .replace(/[^a-z0-9-]+/gi, '-')
+                .replace(/^-+|-+$/g, '') || 'contact';
+        }
+
+        function setStatus(message, type = '') {
+            status.textContent = message;
+            status.className = type;
+        }
+    </script>
+</body>
+</html>
