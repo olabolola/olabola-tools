@@ -192,6 +192,14 @@
                         <label for="website">Website <span class="optional">optional</span></label>
                         <input id="website" name="website" type="url" autocomplete="url" inputmode="url" placeholder="https://example.com">
                     </div>
+                    <div class="field">
+                        <label for="wechat">WeChat ID <span class="optional">optional</span></label>
+                        <input id="wechat" name="wechat" autocomplete="off" placeholder="your_wechat_id">
+                    </div>
+                    <div class="field">
+                        <label for="line">LINE ID <span class="optional">optional</span></label>
+                        <input id="line" name="line" autocomplete="off" placeholder="your_line_id">
+                    </div>
 
                     <details>
                         <summary>Add address or note</summary>
@@ -301,7 +309,7 @@
                 setStatus(message, 'success');
             } catch (error) {
                 currentVcard = '';
-                setStatus('That is too much information for one QR code. Shorten the note or address and try again.', 'error');
+                setStatus('That is too much information for one QR code. Shorten some details and try again.', 'error');
             }
         }
 
@@ -326,7 +334,13 @@
 
             const address = ['','', get('street'), get('city'), get('region'), get('postalCode'), get('country')];
             if (address.some(Boolean)) lines.push(`ADR;TYPE=WORK:${address.map(vcardEscape).join(';')}`);
-            addLine(lines, 'NOTE', get('note'));
+
+            const note = [
+                get('wechat') && `WeChat: ${get('wechat')}`,
+                get('line') && `LINE: ${get('line')}`,
+                get('note')
+            ].filter(Boolean).join('\n');
+            addLine(lines, 'NOTE', note);
             lines.push('END:VCARD');
             return lines.join('\r\n');
         }
