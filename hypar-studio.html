@@ -1,0 +1,788 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hypar Studio</title>
+<style>
+/* Layout: one-screen studio — business-card stage on the left, control rail on the right; stacks on phones */
+:root{
+  --bg:#eceef2; --panel:#fbfbfc; --fg:#17191e; --muted:#6a707c; --line:#dcdfe5;
+  --accent:#2f5bd3; --on-accent:#ffffff; --stage:#e1e4ea; --field:#ffffff;
+  --sans:-apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --mono:ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root{ --bg:#111317; --panel:#16181d; --fg:#e7e9ee; --muted:#959ba7; --line:#2a2d35;
+    --accent:#8aa4ff; --on-accent:#0d1020; --stage:#0b0c0f; --field:#1f2229; color-scheme:dark; }
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font:13px/1.4 var(--sans)}
+.app{display:grid;grid-template-columns:minmax(0,1fr) 340px;height:100%}
+.main{display:flex;flex-direction:column;min-width:0;min-height:0}
+.top{display:flex;align-items:center;gap:14px;padding:12px 16px;border-bottom:1px solid var(--line)}
+.brand{font-weight:650;font-size:15px;letter-spacing:-.01em}
+.eq{font-family:var(--mono);color:var(--muted);font-size:12px}
+.top .sp{flex:1}
+.stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;background:var(--stage);position:relative;overflow:hidden}
+#cv{display:block;border-radius:5px;box-shadow:0 1px 2px rgba(0,0,0,.08),0 14px 40px rgba(0,0,0,.2);cursor:grab;touch-action:none}
+#cv.dragging{cursor:grabbing}
+#cv.checker{background:repeating-conic-gradient(#d3d6dc 0 25%, #f3f4f6 0 50%) 0 0/16px 16px}
+.hint{position:absolute;left:14px;bottom:10px;font-size:11px;color:var(--muted);pointer-events:none}
+.export{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 16px;border-top:1px solid var(--line)}
+.export .dims{font-family:var(--mono);font-size:11.5px;color:var(--muted);margin-right:auto}
+.panel{border-left:1px solid var(--line);background:var(--panel);overflow-y:auto;padding:0 16px 28px}
+.sec{border-bottom:1px solid var(--line);padding:14px 0 6px}
+.sec h3{margin:0 0 10px;font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.row{display:grid;gap:3px;margin-bottom:10px}
+.row label{display:flex;justify-content:space-between;gap:8px}
+.row output{font-family:var(--mono);color:var(--muted);font-size:11.5px;font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;margin:0;accent-color:var(--accent)}
+select{font:inherit;width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:7px;background:var(--field);color:var(--fg)}
+.export select{width:auto}
+button{font:inherit;padding:7px 11px;border:1px solid var(--line);background:var(--field);color:var(--fg);border-radius:7px;cursor:pointer}
+button:hover{border-color:var(--muted)}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600}
+button[aria-pressed="true"]{border-color:var(--accent);color:var(--accent)}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.presets{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:8px}
+.preset{padding:0;overflow:hidden;display:flex;flex-direction:column;text-align:left}
+.preset canvas{width:100%;aspect-ratio:7/4;display:block}
+.preset span{padding:5px 8px;font-size:11.5px}
+.pals{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-bottom:12px}
+.pal{padding:4px;display:flex;flex-direction:column;gap:4px}
+.pal .sw{display:flex;height:18px;border-radius:4px;overflow:hidden;border:1px solid var(--line)}
+.pal .sw i{flex:1}
+.pal small{font-size:10.5px;color:var(--muted)}
+.colors{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;margin-bottom:12px}
+.colors label{display:flex;flex-direction:column;gap:3px;font-size:10px;color:var(--muted);text-align:center}
+input[type=color]{width:100%;height:28px;border:1px solid var(--line);border-radius:6px;padding:2px;background:var(--field);cursor:pointer}
+.check{display:flex;gap:8px;align-items:center;margin-bottom:10px;cursor:pointer}
+.btnrow{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:12.5px;z-index:5}
+@media (max-width:860px){
+  html,body{height:auto}
+  .app{grid-template-columns:1fr;height:auto}
+  .main{height:78vh}
+  .panel{border-left:0}
+  .hint{display:none}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="main">
+    <header class="top">
+      <div class="brand">Hypar Studio</div>
+      <div class="eq" id="eq">z = h · u · v</div>
+      <div class="sp"></div>
+      <button id="rand" type="button">Randomize</button>
+    </header>
+    <div class="stage" id="stage">
+      <canvas id="cv"></canvas>
+      <div class="hint">Drag to rotate · Shift-drag to move · Scroll to zoom</div>
+    </div>
+    <div class="export">
+      <span class="dims" id="dims"></span>
+      <select id="c-format" aria-label="Size">
+        <option value="us">US card 3.5 × 2 in</option>
+        <option value="usv">US card, portrait</option>
+        <option value="eu">EU card 85 × 55 mm</option>
+        <option value="sq">Square / logo</option>
+        <option value="li">LinkedIn banner</option>
+      </select>
+      <select id="c-scale" aria-label="Resolution">
+        <option value="1">300 dpi (1×)</option>
+        <option value="2">600 dpi (2×)</option>
+        <option value="4">1200 dpi (4×)</option>
+      </select>
+      <label class="check" style="margin:0"><input type="checkbox" id="c-transparent"> Transparent</label>
+      <button class="primary" id="dlpng" type="button">Download PNG</button>
+      <button id="cppng" type="button">Copy PNG</button>
+      <button id="dlsvg" type="button">Download SVG</button>
+      <button id="cpsvg" type="button">Copy SVG</button>
+    </div>
+  </div>
+  <aside class="panel" id="panel"></aside>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+/* ---------- pure geometry + rendering (no DOM) ---------- */
+const D2R = Math.PI / 180;
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+const FORMATS = {
+  us:  { w: 1050, h: 600,  dpi: 300 },
+  usv: { w: 600,  h: 1050, dpi: 300 },
+  eu:  { w: 1004, h: 650,  dpi: 300 },
+  sq:  { w: 1200, h: 1200, dpi: 300 },
+  li:  { w: 1584, h: 396,  dpi: 72 },
+};
+
+const PALETTES = {
+  Graphite:  { bg: '#fafafa', a: '#1b1d22', b: '#8a8f99', c: '#c9ccd2', ink: '#fafafa' },
+  Blueprint: { bg: '#123a6b', a: '#e8f1ff', b: '#7fb6ff', c: '#ffffff', ink: '#123a6b' },
+  Sunset:    { bg: '#1a1423', a: '#ff7a59', b: '#ffd166', c: '#ef476f', ink: '#1a1423' },
+  Mint:      { bg: '#f2fbf8', a: '#0f766e', b: '#f59e0b', c: '#134e4a', ink: '#f2fbf8' },
+  Neon:      { bg: '#0b0b12', a: '#00e5ff', b: '#ff2bd6', c: '#7c4dff', ink: '#0b0b12' },
+  Signal:    { bg: '#ffffff', a: '#d62828', b: '#003049', c: '#f77f00', ink: '#ffffff' },
+  Copper:    { bg: '#191512', a: '#d08c4a', b: '#f1d4a8', c: '#7a4a26', ink: '#191512' },
+  Ocean:     { bg: '#eaf4fb', a: '#023e8a', b: '#00b4d8', c: '#90e0ef', ink: '#eaf4fb' },
+  Mono:      { bg: '#000000', a: '#ffffff', b: '#bdbdbd', c: '#6b6b6b', ink: '#000000' },
+};
+
+const DEF = {
+  shape: 'ruled', sides: 6, inner: 0.5, shapeRot: 0, h: 0.75, skew: 90, sx: 1, sy: 1,
+  arr: 'single', copies: 4, spread: 0.9, twist: 0, alt: false,
+  style: 'rulings', density: 20, lineWidth: 1.6, opacity: 1, fade: 0,
+  colorMode: 'families', ...PALETTES.Graphite,
+  yaw: 35, pitch: 25, roll: 0, zoom: 1, persp: 0.25, panX: 0, panY: 0,
+  format: 'us', scale: 1, transparent: false,
+};
+
+const PRESETS = {
+  Classic:  { shape: 'ruled', h: 0.75, style: 'rulings', density: 20, lineWidth: 1.6, colorMode: 'families', pal: 'Graphite' },
+  Pringle:  { shape: 'circle', h: 1.1, style: 'solidlines', density: 22, colorMode: 'height', pal: 'Sunset', yaw: 20, pitch: 30, lineWidth: 1 },
+  Umbrella: { shape: 'ruled', arr: 'umbrella', copies: 4, h: 0.8, style: 'rulings', density: 12, pal: 'Blueprint', pitch: 24, yaw: 15, lineWidth: 1.3 },
+  Bloom:    { shape: 'ruled', arr: 'ring', copies: 6, spread: 0.9, h: 0.8, style: 'rulings', density: 10, colorMode: 'sweep', pal: 'Neon', pitch: 58, lineWidth: 1.1 },
+  Tower:    { shape: 'ruled', arr: 'tower', copies: 9, spread: 0.35, twist: 20, h: 0.5, style: 'rulings', density: 10, colorMode: 'height', pal: 'Copper', pitch: 10, lineWidth: 1, zoom: 1.05 },
+  Star:     { shape: 'star', sides: 5, inner: 0.45, h: 0.9, style: 'contours', density: 26, colorMode: 'families', pal: 'Signal', pitch: 42, lineWidth: 1.3 },
+  Sections: { shape: 'polygon', sides: 6, style: 'parabolas', density: 18, pal: 'Ocean', colorMode: 'sweep', pitch: 30, lineWidth: 1.4 },
+  Dots:     { shape: 'circle', style: 'dots', density: 28, colorMode: 'height', pal: 'Mint', lineWidth: 1.8, fade: 0.6, pitch: 32 },
+};
+
+const GEO_KEYS = ['shape','sides','inner','shapeRot','h','skew','sx','sy','arr','copies','spread','twist','alt','style','density'];
+
+function ngon(n, r, off) {
+  const o = [];
+  for (let i = 0; i < n; i++) { const a = off + 2 * Math.PI * i / n; o.push([r * Math.cos(a), r * Math.sin(a)]); }
+  return o;
+}
+function signedArea(poly) {
+  let a = 0;
+  for (let i = 0; i < poly.length; i++) { const p = poly[i], q = poly[(i + 1) % poly.length]; a += p[0] * q[1] - q[0] * p[1]; }
+  return a / 2;
+}
+const ccw = poly => signedArea(poly) < 0 ? poly.slice().reverse() : poly;
+
+// Sutherland–Hodgman: clip `subject` against convex ccw `clip`
+function clipPoly(subject, clip) {
+  let out = subject;
+  for (let i = 0; i < clip.length && out.length; i++) {
+    const A = clip[i], B = clip[(i + 1) % clip.length];
+    const side = p => (B[0] - A[0]) * (p[1] - A[1]) - (B[1] - A[1]) * (p[0] - A[0]);
+    const inp = out; out = [];
+    for (let j = 0; j < inp.length; j++) {
+      const P = inp[j], Q = inp[(j + 1) % inp.length];
+      const sp = side(P), sq = side(Q);
+      if (sp >= 0) out.push(P);
+      if ((sp >= 0) !== (sq >= 0)) { const t = sp / (sp - sq); out.push([P[0] + (Q[0] - P[0]) * t, P[1] + (Q[1] - P[1]) * t]); }
+    }
+  }
+  return out;
+}
+
+function buildGeometry(st) {
+  const umb = st.arr === 'umbrella';
+  const nC = st.arr === 'single' ? 1 : umb ? clamp(Math.round(st.copies), 3, 8) : Math.max(1, Math.round(st.copies));
+  const phi = (umb ? 360 / nC : st.skew) * D2R;
+  // ruling directions in plan view; surface is z = h·u·v (a hyperbolic paraboloid for any skew)
+  const e1 = [Math.cos(phi / 2), -Math.sin(phi / 2)], e2 = [Math.cos(phi / 2), Math.sin(phi / 2)];
+  const det = e1[0] * e2[1] - e2[0] * e1[1];
+  const toP = (u, v) => [u * e1[0] + v * e2[0], u * e1[1] + v * e2[1]];
+  const toUV = p => [(p[0] * e2[1] - e2[0] * p[1]) / det, (e1[0] * p[1] - p[0] * e1[1]) / det];
+  const to3 = (u, v) => { const p = toP(u, v); return [p[0] * st.sx, p[1] * st.sy, st.h * u * v]; };
+
+  // outline as a union of convex pieces (plan coordinates)
+  const rot = st.shapeRot * D2R + Math.PI / 2;
+  let polys = [];
+  if (st.shape === 'ruled') polys = [[toP(1, 1), toP(-1, 1), toP(-1, -1), toP(1, -1)]];
+  else if (st.shape === 'circle') polys = [ngon(180, 1, 0)];
+  else if (st.shape === 'polygon') polys = [ngon(Math.round(st.sides), 1, rot)];
+  else if (st.shape === 'star') {
+    const k = Math.round(st.sides);
+    for (let i = 0; i < k; i++) {
+      const a0 = rot + 2 * Math.PI * i / k, a1 = a0 + Math.PI / k, a2 = a0 + 2 * Math.PI / k;
+      const O = [Math.cos(a0), Math.sin(a0)], I = [st.inner * Math.cos(a1), st.inner * Math.sin(a1)], O2 = [Math.cos(a2), Math.sin(a2)];
+      polys.push([[0, 0], O, I], [[0, 0], I, O2]);
+    }
+  } else if (st.shape === 'ring') {
+    const m = 120, ri = st.inner;
+    for (let i = 0; i < m; i++) {
+      const a0 = 2 * Math.PI * i / m, a1 = 2 * Math.PI * (i + 1) / m;
+      polys.push([[Math.cos(a0), Math.sin(a0)], [Math.cos(a1), Math.sin(a1)], [ri * Math.cos(a1), ri * Math.sin(a1)], [ri * Math.cos(a0), ri * Math.sin(a0)]]);
+    }
+  }
+  polys = polys.map(ccw);
+  if (umb) {
+    const K = 8, wedge = ccw([[0, 0], toP(K, 0), toP(K, K), toP(0, K)]);
+    polys = polys.map(p => clipPoly(p, wedge)).filter(p => p.length >= 3 && Math.abs(signedArea(p)) > 1e-9).map(ccw);
+  }
+  const empty = { lines: [], polys: [], dots: [], zmin: 0, zmax: 1 };
+  if (!polys.length) return empty;
+
+  const pieces = polys.map(poly => {
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (const p of poly) { x0 = Math.min(x0, p[0]); x1 = Math.max(x1, p[0]); y0 = Math.min(y0, p[1]); y1 = Math.max(y1, p[1]); }
+    return { poly, x0, x1, y0, y1 };
+  });
+  const inPiece = (pc, p) => {
+    if (p[0] < pc.x0 - 1e-9 || p[0] > pc.x1 + 1e-9 || p[1] < pc.y0 - 1e-9 || p[1] > pc.y1 + 1e-9) return false;
+    const P = pc.poly;
+    for (let i = 0; i < P.length; i++) {
+      const A = P[i], B = P[(i + 1) % P.length];
+      if ((B[0] - A[0]) * (p[1] - A[1]) - (B[1] - A[1]) * (p[0] - A[0]) < -1e-9) return false;
+    }
+    return true;
+  };
+  const insideUV = (u, v) => { const p = toP(u, v); for (const pc of pieces) if (inPiece(pc, p)) return true; return false; };
+
+  let umin = Infinity, umax = -Infinity, vmin = Infinity, vmax = -Infinity;
+  for (const pc of pieces) for (const p of pc.poly) {
+    const [u, v] = toUV(p);
+    umin = Math.min(umin, u); umax = Math.max(umax, u); vmin = Math.min(vmin, v); vmax = Math.max(vmax, v);
+  }
+
+  const N = Math.max(1, Math.round(st.density));
+  const straightEdges = st.shape === 'ruled';
+  const levels = (lo, hi, incl) => {
+    const out = [];
+    for (let i = 0; i < N; i++) {
+      let f = incl ? (N === 1 ? 0.5 : i / (N - 1)) : (i + 0.5) / N;
+      if (incl) f = clamp(f, 1e-6, 1 - 1e-6);
+      out.push([lo + (hi - lo) * f, N === 1 ? 0.5 : i / (N - 1)]);
+    }
+    return out;
+  };
+
+  // sample a uv-curve, keep the parts inside the outline, refine the cut points by bisection
+  const sampleCurve = (f, t0, t1, n) => {
+    const pad = (t1 - t0) * 0.01; t0 -= pad; t1 += pad;
+    const runs = []; let cur = null, prevT = t0, prevIn = false;
+    for (let i = 0; i <= n; i++) {
+      const t = t0 + (t1 - t0) * i / n, uv = f(t), ins = insideUV(uv[0], uv[1]);
+      if (i > 0 && ins !== prevIn) {
+        let a = prevT, b = t;
+        for (let k = 0; k < 22; k++) { const m = (a + b) / 2, q = f(m); if (insideUV(q[0], q[1]) === prevIn) a = m; else b = m; }
+        const bp = f(prevIn ? a : b);
+        if (ins) cur = [bp]; else { if (cur) { cur.push(bp); runs.push(cur); } cur = null; }
+      }
+      if (ins) { if (!cur) cur = []; cur.push(uv); }
+      prevIn = ins; prevT = t;
+    }
+    if (cur && cur.length > 1) runs.push(cur);
+    return runs.filter(r => r.length >= 2);
+  };
+
+  const lines = [], faces = [], dots = [];
+  const addCurves = (fam, f, t0, t1, idx, n, straight) => {
+    for (const run of sampleCurve(f, t0, t1, n)) lines.push({ fam, idx, straight, pts: run.map(([u, v]) => to3(u, v)) });
+  };
+  const style = st.style;
+
+  if (style === 'rulings' || style === 'solidlines') {
+    for (const [c, idx] of levels(umin, umax, straightEdges)) addCurves(0, t => [c, t], vmin, vmax, idx, 120, true);
+    for (const [c, idx] of levels(vmin, vmax, straightEdges)) addCurves(1, t => [t, c], umin, umax, idx, 120, true);
+  }
+  if (style === 'parabolas') {
+    const r2 = Math.SQRT1_2;
+    let smin = Infinity, smax = -Infinity, tmin = Infinity, tmax = -Infinity;
+    for (const pc of pieces) for (const p of pc.poly) {
+      const [u, v] = toUV(p), s = (u + v) * r2, t = (u - v) * r2;
+      smin = Math.min(smin, s); smax = Math.max(smax, s); tmin = Math.min(tmin, t); tmax = Math.max(tmax, t);
+    }
+    for (const [c, idx] of levels(smin, smax, false)) addCurves(0, t => [(c + t) * r2, (c - t) * r2], tmin, tmax, idx, 220, false);
+    for (const [c, idx] of levels(tmin, tmax, false)) addCurves(1, s => [(s + c) * r2, (s - c) * r2], smin, smax, idx, 220, false);
+  }
+  if (style === 'contours') {
+    let kmin = Infinity, kmax = -Infinity;
+    const G = 110;
+    for (let i = 0; i <= G; i++) for (let j = 0; j <= G; j++) {
+      const u = umin + (umax - umin) * i / G, v = vmin + (vmax - vmin) * j / G;
+      if (insideUV(u, v)) { kmin = Math.min(kmin, u * v); kmax = Math.max(kmax, u * v); }
+    }
+    const Rb = Math.max(Math.abs(umin), Math.abs(umax), Math.abs(vmin), Math.abs(vmax));
+    if (isFinite(kmin)) for (const [k, idx] of levels(kmin, kmax, false)) {
+      if (Math.abs(k) < 1e-9) continue;
+      const r = Math.sqrt(Math.abs(k)), L = Math.log(Rb / r) + 0.02;
+      if (L <= 0) continue;
+      const branches = k > 0 ? [[1, 1], [-1, -1]] : [[1, -1], [-1, 1]];
+      for (const [a, b] of branches) addCurves(k > 0 ? 0 : 1, w => [a * r * Math.exp(w), b * r * Math.exp(-w)], -L, L, idx, 360, false);
+    }
+  }
+  if (style === 'dots') {
+    const U = levels(umin, umax, straightEdges), V = levels(vmin, vmax, straightEdges);
+    U.forEach(([u, iu], i) => V.forEach(([v], j) => { if (insideUV(u, v)) dots.push({ fam: (i + j) % 2, idx: iu, p: to3(u, v) }); }));
+  }
+  if (style === 'solid' || style === 'solidlines') {
+    const res = clamp(Math.round(N * 2.5), 16, Math.round(110 / Math.sqrt(nC)));
+    for (let i = 0; i < res; i++) for (let j = 0; j < res; j++) {
+      const ua = umin + (umax - umin) * i / res, ub = umin + (umax - umin) * (i + 1) / res;
+      const va = vmin + (vmax - vmin) * j / res, vb = vmin + (vmax - vmin) * (j + 1) / res;
+      const quad = [toP(ua, va), toP(ub, va), toP(ub, vb), toP(ua, vb)];
+      let qx0 = Infinity, qx1 = -Infinity, qy0 = Infinity, qy1 = -Infinity;
+      for (const p of quad) { qx0 = Math.min(qx0, p[0]); qx1 = Math.max(qx1, p[0]); qy0 = Math.min(qy0, p[1]); qy1 = Math.max(qy1, p[1]); }
+      const t = ((ua + ub) / 2 - umin) / ((umax - umin) || 1);
+      for (const pc of pieces) {
+        if (qx1 < pc.x0 || qx0 > pc.x1 || qy1 < pc.y0 || qy0 > pc.y1) continue;
+        if (quad.every(p => inPiece(pc, p))) { faces.push({ t, pts: quad.map(p => to3(...toUV(p))) }); break; }
+        const cp = clipPoly(quad, pc.poly);
+        if (cp.length >= 3 && Math.abs(signedArea(cp)) > 1e-10) faces.push({ t, pts: cp.map(p => to3(...toUV(p))) });
+      }
+    }
+  }
+
+  // copies
+  const T = [];
+  for (let i = 0; i < nC; i++) {
+    let lr = 0, tx = 0, tz = 0, gr = 0;
+    if (umb) gr = i * phi;
+    else if (st.arr === 'ring') { gr = 2 * Math.PI * i / nC; lr = st.twist * D2R; tx = st.spread; }
+    else if (st.arr === 'tower') { lr = i * st.twist * D2R; tz = i * st.spread * 0.6; }
+    T.push({ i, cl: Math.cos(lr), sl: Math.sin(lr), cg: Math.cos(gr), sg: Math.sin(gr), tx, tz, zs: (st.alt && i % 2) ? -1 : 1 });
+  }
+  const tf = (p, t) => {
+    let x = p[0] * t.cl - p[1] * t.sl; const y = p[0] * t.sl + p[1] * t.cl; x += t.tx;
+    return [x * t.cg - y * t.sg, x * t.sg + y * t.cg, p[2] * t.zs + t.tz];
+  };
+  const sw = (v, t) => nC > 1 ? (t.i + v) / nC : v;
+  const W = { lines: [], polys: [], dots: [] };
+  for (const t of T) {
+    for (const l of lines) W.lines.push({ fam: l.fam, straight: l.straight, idx: sw(l.idx, t), pts: l.pts.map(p => tf(p, t)) });
+    for (const q of faces) W.polys.push({ t: sw(q.t, t), pts: q.pts.map(p => tf(p, t)) });
+    for (const d of dots) W.dots.push({ fam: d.fam, idx: sw(d.idx, t), p: tf(d.p, t) });
+  }
+
+  // normalise into the unit sphere
+  const all = [];
+  W.lines.forEach(l => all.push(...l.pts)); W.polys.forEach(q => all.push(...q.pts)); W.dots.forEach(d => all.push(d.p));
+  if (!all.length) return empty;
+  const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+  for (const p of all) for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], p[k]); hi[k] = Math.max(hi[k], p[k]); }
+  const c = lo.map((v, k) => (v + hi[k]) / 2);
+  let R = 1e-9;
+  for (const p of all) R = Math.max(R, Math.hypot(p[0] - c[0], p[1] - c[1], p[2] - c[2]));
+  let zmin = Infinity, zmax = -Infinity;
+  for (const p of all) { p[0] = (p[0] - c[0]) / R; p[1] = (p[1] - c[1]) / R; p[2] = (p[2] - c[2]) / R; zmin = Math.min(zmin, p[2]); zmax = Math.max(zmax, p[2]); }
+  W.zmin = zmin; W.zmax = zmax;
+  return W;
+}
+
+function makeCamera(st, W, H) {
+  const ya = st.yaw * D2R, el = st.pitch * D2R, ro = st.roll * D2R;
+  const cy = Math.cos(ya), sy = Math.sin(ya), ce = Math.cos(el), se = Math.sin(el), cr = Math.cos(ro), sr = Math.sin(ro);
+  const dist = st.persp > 0.001 ? 1.5 / st.persp : 0;
+  const sc = st.zoom * Math.min(W, H) * 0.42, ox = W / 2 + st.panX * W, oy = H / 2 + st.panY * H;
+  const cam = p => {
+    const x1 = p[0] * cy - p[1] * sy, y1 = p[0] * sy + p[1] * cy, z = p[2];
+    const ys = z * ce + y1 * se, d = -y1 * ce + z * se;
+    return [x1 * cr - ys * sr, x1 * sr + ys * cr, d];
+  };
+  const scr = c => { const k = dist ? dist / (dist - c[2]) : 1; return [ox + c[0] * k * sc, oy - c[1] * k * sc, c[2]]; };
+  return { cam, scr, proj: p => scr(cam(p)) };
+}
+
+const hex = s => { s = s.replace('#', ''); if (s.length === 3) s = s.split('').map(c => c + c).join(''); const n = parseInt(s, 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+const rgbStr = c => `rgb(${c.map(v => Math.round(clamp(v, 0, 255))).join(',')})`;
+const toHex = c => '#' + c.map(v => Math.round(clamp(v, 0, 255)).toString(16).padStart(2, '0')).join('');
+function makeLut(st) {
+  const A = hex(st.a), B = hex(st.b), C = hex(st.c), rgb = [], str = [];
+  for (let i = 0; i <= 64; i++) {
+    const t = i / 64, [P, Q, k] = t < 0.5 ? [A, B, t * 2] : [B, C, (t - 0.5) * 2];
+    const c = P.map((v, j) => v + (Q[j] - v) * k);
+    rgb.push(c); str.push(toHex(c));
+  }
+  const ix = t => clamp(Math.round(t * 64), 0, 64);
+  return { str: t => str[ix(t)], rgb: t => rgb[ix(t)] };
+}
+
+const LIGHT = (() => { const v = [-0.45, 0.6, 0.66], m = Math.hypot(...v); return v.map(x => x / m); })();
+const HALF = (() => { const v = [LIGHT[0], LIGHT[1], LIGHT[2] + 1], m = Math.hypot(...v); return v.map(x => x / m); })();
+
+function buildPrims(st, G, W, H) {
+  const cam = makeCamera(st, W, H);
+  const lw = st.lineWidth * Math.min(W, H) / 600;
+  const L = makeLut(st);
+  const zr = (G.zmax - G.zmin) || 1, zt = z => (z - G.zmin) / zr;
+  const solid = st.style === 'solid' || st.style === 'solidlines';
+  const overlay = st.style === 'solidlines';
+  const needSort = solid || st.fade > 0;
+  const subdiv = needSort || st.colorMode === 'height';
+  const alphaOf = d => { let a = st.opacity; if (st.fade > 0) a *= 1 - st.fade * (1 - clamp((d + 1) / 2, 0, 1)); return Math.round(a * 48) / 48; };
+  const prims = [];
+
+  for (const ln of G.lines) {
+    const pts = (ln.straight && !subdiv) ? [ln.pts[0], ln.pts[ln.pts.length - 1]] : ln.pts;
+    const P = pts.map(cam.proj);
+    const fixed = overlay ? st.ink : st.colorMode === 'families' ? (ln.fam ? st.b : st.a) : st.colorMode === 'sweep' ? L.str(ln.idx) : null;
+    for (let i = 0; i < P.length - 1; i++) {
+      const p = P[i], q = P[i + 1], d = (p[2] + q[2]) / 2 + (overlay ? 0.02 : 0);
+      prims.push({ t: 0, x1: p[0], y1: p[1], x2: q[0], y2: q[1], d, col: fixed || L.str(zt((pts[i][2] + pts[i + 1][2]) / 2)), a: alphaOf(d) });
+    }
+  }
+  for (const q of G.polys) {
+    const C = q.pts.map(cam.cam);
+    const n = [0, 0, 0];
+    for (let i = 0; i < C.length; i++) {
+      const a = C[i], b = C[(i + 1) % C.length];
+      n[0] += (a[1] - b[1]) * (a[2] + b[2]); n[1] += (a[2] - b[2]) * (a[0] + b[0]); n[2] += (a[0] - b[0]) * (a[1] + b[1]);
+    }
+    const m = Math.hypot(...n) || 1; n[0] /= m; n[1] /= m; n[2] /= m;
+    const front = n[2] >= 0, f = front ? 1 : -1;
+    const diff = Math.max(0, f * (n[0] * LIGHT[0] + n[1] * LIGHT[1] + n[2] * LIGHT[2]));
+    const spec = Math.pow(Math.max(0, f * (n[0] * HALF[0] + n[1] * HALF[1] + n[2] * HALF[2])), 30) * 0.35;
+    let z = 0; for (const p of q.pts) z += p[2]; z /= q.pts.length;
+    const base = st.colorMode === 'families' ? hex(front ? st.a : st.b) : st.colorMode === 'height' ? L.rgb(zt(z)) : L.rgb(q.t);
+    const shade = 0.38 + 0.62 * diff;
+    const col = rgbStr(base.map(v => v * shade + 255 * spec));
+    let d = 0; for (const c of C) d += c[2]; d /= C.length;
+    prims.push({ t: 1, pts: C.map(cam.scr), d, col, a: alphaOf(d) });
+  }
+  for (const dt of G.dots) {
+    const p = cam.proj(dt.p);
+    const col = st.colorMode === 'families' ? (dt.fam ? st.b : st.a) : st.colorMode === 'height' ? L.str(zt(dt.p[2])) : L.str(dt.idx);
+    prims.push({ t: 2, x: p[0], y: p[1], r: lw * 1.7, d: p[2], col, a: alphaOf(p[2]) });
+  }
+  if (needSort || G.dots.length) prims.sort((a, b) => a.d - b.d);
+  return { prims, lw };
+}
+
+function drawScene(st, G, sink, W, H, transparent) {
+  if (!transparent) sink.bg(st.bg);
+  const { prims, lw } = buildPrims(st, G, W, H);
+  let batch = null;
+  const flush = () => { if (batch) { sink.lines(batch.segs, batch.col, batch.a, lw); batch = null; } };
+  for (const p of prims) {
+    if (p.t === 0) {
+      if (batch && batch.col === p.col && batch.a === p.a) batch.segs.push(p);
+      else { flush(); batch = { col: p.col, a: p.a, segs: [p] }; }
+    } else { flush(); if (p.t === 1) sink.poly(p.pts, p.col, p.a); else sink.dot(p.x, p.y, p.r, p.col, p.a); }
+  }
+  flush();
+}
+
+function canvasSink(ctx, W, H) {
+  return {
+    bg(c) { ctx.fillStyle = c; ctx.fillRect(0, 0, W, H); },
+    lines(segs, col, a, lw) {
+      ctx.globalAlpha = a; ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      ctx.beginPath(); let lx = NaN, ly = NaN;
+      for (const s of segs) { if (s.x1 !== lx || s.y1 !== ly) ctx.moveTo(s.x1, s.y1); ctx.lineTo(s.x2, s.y2); lx = s.x2; ly = s.y2; }
+      ctx.stroke(); ctx.globalAlpha = 1;
+    },
+    poly(pts, col, a) {
+      ctx.globalAlpha = a; ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+      ctx.closePath(); ctx.fill();
+      if (a >= 1) { ctx.strokeStyle = col; ctx.lineWidth = 0.7; ctx.lineJoin = 'round'; ctx.stroke(); }
+      ctx.globalAlpha = 1;
+    },
+    dot(x, y, r, col, a) { ctx.globalAlpha = a; ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, r, 0, 2 * Math.PI); ctx.fill(); ctx.globalAlpha = 1; },
+  };
+}
+
+function svgSink(W, H) {
+  const out = [], n = v => Math.round(v * 100) / 100;
+  return {
+    bg(c) { out.push(`<rect width="${W}" height="${H}" fill="${c}"/>`); },
+    lines(segs, col, a, lw) {
+      let d = '', lx = NaN, ly = NaN;
+      for (const s of segs) { if (s.x1 !== lx || s.y1 !== ly) d += `M${n(s.x1)} ${n(s.y1)}`; d += `L${n(s.x2)} ${n(s.y2)}`; lx = s.x2; ly = s.y2; }
+      out.push(`<path d="${d}" fill="none" stroke="${col}"${a < 1 ? ` stroke-opacity="${a}"` : ''} stroke-width="${n(lw)}" stroke-linecap="round" stroke-linejoin="round"/>`);
+    },
+    poly(pts, col, a) {
+      out.push(`<path d="M${pts.map(p => n(p[0]) + ' ' + n(p[1])).join('L')}Z" fill="${col}"${a < 1 ? ` fill-opacity="${a}"` : ` stroke="${col}" stroke-width="0.5" stroke-linejoin="round"`}/>`);
+    },
+    dot(x, y, r, col, a) { out.push(`<circle cx="${n(x)}" cy="${n(y)}" r="${n(r)}" fill="${col}"${a < 1 ? ` fill-opacity="${a}"` : ''}/>`); },
+    done() { return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">\n${out.join('\n')}\n</svg>\n`; },
+  };
+}
+
+if (typeof module !== 'undefined') module.exports = { buildGeometry, buildPrims, drawScene, svgSink, DEF, PRESETS, PALETTES };
+</script>
+
+<script>
+/* ---------- UI ---------- */
+const $ = s => document.querySelector(s);
+const STORE = 'hypar-studio-v1';
+const presetState = (p, keep = {}) => {
+  const st = { ...DEF, ...keep, ...p };
+  if (p.pal) Object.assign(st, PALETTES[p.pal]);
+  delete st.pal;
+  return st;
+};
+let S = presetState(PRESETS.Classic);
+try { const saved = JSON.parse(localStorage.getItem(STORE) || 'null'); if (saved) for (const k in DEF) if (k in saved) S[k] = saved[k]; } catch (e) {}
+const save = () => { try { localStorage.setItem(STORE, JSON.stringify(S)); } catch (e) {} };
+
+const cv = $('#cv'), stage = $('#stage');
+let geo = null, geoKey = '', spinning = false, pending = false;
+const getGeo = () => { const key = GEO_KEYS.map(k => S[k]).join('|'); if (key !== geoKey) { geo = buildGeometry(S); geoKey = key; } return geo; };
+
+function fitCanvas() {
+  const f = FORMATS[S.format], r = stage.getBoundingClientRect();
+  const pad = 40, aw = Math.max(50, r.width - pad * 2), ah = Math.max(50, r.height - pad * 2);
+  const A = f.w / f.h; let w = Math.min(aw, ah * A), h = w / A;
+  const dpr = window.devicePixelRatio || 1;
+  cv.style.width = w + 'px'; cv.style.height = h + 'px';
+  cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+  requestRender();
+}
+function renderMain() {
+  const ctx = cv.getContext('2d');
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  drawScene(S, getGeo(), canvasSink(ctx, cv.width, cv.height), cv.width, cv.height, S.transparent);
+  cv.classList.toggle('checker', S.transparent);
+}
+function requestRender() {
+  if (pending) return; pending = true;
+  requestAnimationFrame(() => {
+    pending = false; renderMain();
+    if (spinning) { S.yaw = wrap(S.yaw + 0.35); syncControls(['yaw']); requestRender(); }
+  });
+}
+const wrap = a => ((a + 180) % 360 + 360) % 360 - 180;
+
+/* --- panel schema --- */
+const isShape = (...k) => s => k.includes(s.shape);
+const SECTIONS = [
+  { title: 'Shape', items: [
+    { k: 'shape', type: 'select', label: 'Outline', opts: [['ruled', 'Ruled square (straight edges)'], ['circle', 'Circle'], ['polygon', 'Polygon'], ['star', 'Star'], ['ring', 'Ring']] },
+    { k: 'sides', type: 'range', label: s => s.shape === 'star' ? 'Points' : 'Sides', min: 3, max: 12, step: 1, show: isShape('polygon', 'star') },
+    { k: 'inner', type: 'range', label: 'Inner radius', min: 0.1, max: 0.9, step: 0.01, show: isShape('star', 'ring') },
+    { k: 'shapeRot', type: 'range', label: 'Outline rotation', min: -180, max: 180, step: 1, unit: '°', show: isShape('polygon', 'star') },
+    { k: 'h', type: 'range', label: 'Saddle depth', min: -2, max: 2, step: 0.01 },
+    { k: 'skew', type: 'range', label: 'Angle between rulings', min: 30, max: 150, step: 1, unit: '°', show: s => s.arr !== 'umbrella' },
+    { k: 'sx', type: 'range', label: 'Stretch X', min: 0.3, max: 2, step: 0.01 },
+    { k: 'sy', type: 'range', label: 'Stretch Y', min: 0.3, max: 2, step: 0.01 },
+  ]},
+  { title: 'Arrangement', items: [
+    { k: 'arr', type: 'select', label: 'Layout', opts: [['single', 'Single surface'], ['umbrella', 'Umbrella (petals)'], ['ring', 'Ring'], ['tower', 'Tower']] },
+    { k: 'copies', type: 'range', label: s => s.arr === 'umbrella' ? 'Petals (3–8)' : 'Copies', min: 2, max: 16, step: 1, show: s => s.arr !== 'single' },
+    { k: 'spread', type: 'range', label: 'Spacing', min: 0, max: 2, step: 0.01, show: s => s.arr === 'ring' || s.arr === 'tower' },
+    { k: 'twist', type: 'range', label: s => s.arr === 'tower' ? 'Twist per level' : 'Turn each copy', min: -180, max: 180, step: 1, unit: '°', show: s => s.arr === 'ring' || s.arr === 'tower' },
+    { k: 'alt', type: 'check', label: 'Flip every other copy', show: s => s.arr !== 'single' },
+  ]},
+  { title: 'Style', items: [
+    { k: 'style', type: 'select', label: 'Drawing', opts: [['rulings', 'Ruling lines (straight)'], ['parabolas', 'Parabolic sections'], ['contours', 'Contour lines (hyperbolas)'], ['solid', 'Solid surface'], ['solidlines', 'Solid + ruling lines'], ['dots', 'Dot grid']] },
+    { k: 'density', type: 'range', label: s => s.style === 'solid' ? 'Mesh resolution' : s.style === 'dots' ? 'Grid size' : 'Lines per family', min: 2, max: 80, step: 1 },
+    { k: 'lineWidth', type: 'range', label: s => s.style === 'dots' ? 'Dot size' : 'Line width', min: 0.25, max: 8, step: 0.05, show: s => s.style !== 'solid' },
+    { k: 'opacity', type: 'range', label: 'Opacity', min: 0.1, max: 1, step: 0.01 },
+    { k: 'fade', type: 'range', label: 'Depth fade', min: 0, max: 1, step: 0.01 },
+  ]},
+  { title: 'Colour', palettes: true, items: [
+    { k: 'colorMode', type: 'select', label: 'Colour by', opts: [['families', 'Two colours (A / B)'], ['height', 'Gradient by height'], ['sweep', 'Gradient across lines']] },
+    { type: 'colors', keys: [['bg', 'Back'], ['a', 'A'], ['b', 'B'], ['c', 'C'], ['ink', 'Overlay', s => s.style === 'solidlines']] },
+  ]},
+  { title: 'View', items: [
+    { k: 'yaw', type: 'range', label: 'Spin', min: -180, max: 180, step: 1, unit: '°' },
+    { k: 'pitch', type: 'range', label: 'Tilt', min: -90, max: 90, step: 1, unit: '°' },
+    { k: 'roll', type: 'range', label: 'Roll', min: -180, max: 180, step: 1, unit: '°' },
+    { k: 'zoom', type: 'range', label: 'Zoom', min: 0.2, max: 4, step: 0.01 },
+    { k: 'persp', type: 'range', label: 'Perspective', min: 0, max: 1, step: 0.01 },
+    { k: 'panX', type: 'range', label: 'Move left / right', min: -0.5, max: 0.5, step: 0.005 },
+    { k: 'panY', type: 'range', label: 'Move up / down', min: -0.5, max: 0.5, step: 0.005 },
+  ], view: true },
+];
+
+const CTRL = [];
+const decimals = step => (String(step).split('.')[1] || '').length;
+const fmt = (it, v) => (it.step < 1 ? Number(v).toFixed(decimals(it.step)) : Math.round(v)) + (it.unit || '');
+const labelOf = it => typeof it.label === 'function' ? it.label(S) : it.label;
+
+function makeControl(it) {
+  const id = 'c-' + it.k;
+  if (it.type === 'colors') {
+    const grid = document.createElement('div'); grid.className = 'colors';
+    for (const [k, lab, show] of it.keys) {
+      const l = document.createElement('label'); l.innerHTML = `<input type="color" id="c-${k}">${lab}`;
+      const input = l.querySelector('input');
+      input.addEventListener('input', () => setKey(k, input.value));
+      CTRL.push({ it: { k, type: 'color', show }, row: l, input });
+      grid.appendChild(l);
+    }
+    return grid;
+  }
+  const row = document.createElement(it.type === 'check' ? 'label' : 'div');
+  let input, out = null, lab;
+  if (it.type === 'range') {
+    row.className = 'row';
+    row.innerHTML = `<label for="${id}"><span></span><output></output></label><input type="range" id="${id}" min="${it.min}" max="${it.max}" step="${it.step}">`;
+    input = row.querySelector('input'); out = row.querySelector('output'); lab = row.querySelector('span');
+    input.addEventListener('input', () => setKey(it.k, parseFloat(input.value)));
+    input.addEventListener('dblclick', () => setKey(it.k, DEF[it.k]));
+  } else if (it.type === 'select') {
+    row.className = 'row';
+    row.innerHTML = `<label for="${id}"><span></span></label><select id="${id}">${it.opts.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select>`;
+    input = row.querySelector('select'); lab = row.querySelector('span');
+    input.addEventListener('input', () => setKey(it.k, input.value));
+  } else {
+    row.className = 'check';
+    row.innerHTML = `<input type="checkbox" id="${id}"><span></span>`;
+    input = row.querySelector('input'); lab = row.querySelector('span');
+    input.addEventListener('input', () => setKey(it.k, input.checked));
+  }
+  CTRL.push({ it, row, input, out, lab });
+  return row;
+}
+
+function syncControls(only) {
+  for (const c of CTRL) {
+    const { it } = c;
+    if (only && !only.includes(it.k)) continue;
+    const v = S[it.k];
+    if (it.type === 'check') c.input.checked = !!v; else if (document.activeElement !== c.input || it.type !== 'range') c.input.value = v;
+    if (it.type === 'range' && document.activeElement === c.input) c.input.value = v;
+    if (c.out) c.out.textContent = fmt(it, v);
+    if (c.lab) c.lab.textContent = labelOf(it);
+    c.row.hidden = it.show ? !it.show(S) : false;
+  }
+  if (only) return;
+  $('#c-format').value = S.format; $('#c-scale').value = String(S.scale); $('#c-transparent').checked = S.transparent;
+  const f = FORMATS[S.format], sc = S.scale;
+  $('#dims').textContent = `${f.w * sc} × ${f.h * sc} px · ${f.dpi * sc} dpi`;
+  $('#eq').textContent = S.arr === 'single' ? 'z = h · u · v' : `z = h · u · v  × ${S.arr === 'umbrella' ? clamp(Math.round(S.copies), 3, 8) : Math.round(S.copies)}`;
+}
+
+function setKey(k, v) {
+  S[k] = v; save(); syncControls(); requestRender();
+  if (k === 'format') fitCanvas();
+}
+function applyState(st) { S = { ...st }; save(); syncControls(); fitCanvas(); }
+
+function buildPanel() {
+  const panel = $('#panel');
+  const ps = document.createElement('section'); ps.className = 'sec';
+  ps.innerHTML = '<h3>Presets</h3><div class="presets"></div>';
+  const grid = ps.querySelector('.presets');
+  for (const [name, p] of Object.entries(PRESETS)) {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'preset';
+    b.innerHTML = `<canvas width="280" height="160"></canvas><span>${name}</span>`;
+    const c = b.querySelector('canvas'), st = presetState(p);
+    st.lineWidth *= 1.5;
+    drawScene(st, buildGeometry(st), canvasSink(c.getContext('2d'), 280, 160), 280, 160, false);
+    b.addEventListener('click', () => applyState(presetState(p, { format: S.format, scale: S.scale, transparent: S.transparent })));
+    grid.appendChild(b);
+  }
+  panel.appendChild(ps);
+
+  for (const sec of SECTIONS) {
+    const el = document.createElement('section'); el.className = 'sec';
+    el.innerHTML = `<h3>${sec.title}</h3>`;
+    if (sec.palettes) {
+      const pg = document.createElement('div'); pg.className = 'pals';
+      for (const [name, p] of Object.entries(PALETTES)) {
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'pal'; b.title = name;
+        b.innerHTML = `<span class="sw">${['bg', 'a', 'b', 'c'].map(k => `<i style="background:${p[k]}"></i>`).join('')}</span><small>${name}</small>`;
+        b.addEventListener('click', () => { Object.assign(S, p); save(); syncControls(); requestRender(); });
+        pg.appendChild(b);
+      }
+      el.appendChild(pg);
+    }
+    for (const it of sec.items) el.appendChild(makeControl(it));
+    if (sec.view) {
+      const br = document.createElement('div'); br.className = 'btnrow';
+      br.innerHTML = '<button type="button" id="resetview">Reset view</button><button type="button" id="spin" aria-pressed="false">Auto-spin</button>';
+      el.appendChild(br);
+    }
+    panel.appendChild(el);
+  }
+  $('#resetview').addEventListener('click', () => { for (const k of ['yaw', 'pitch', 'roll', 'zoom', 'persp', 'panX', 'panY']) S[k] = DEF[k]; save(); syncControls(); requestRender(); });
+  $('#spin').addEventListener('click', e => { spinning = !spinning; e.currentTarget.setAttribute('aria-pressed', spinning); if (!spinning) save(); requestRender(); });
+}
+
+/* --- randomize --- */
+function randomize() {
+  const r = (a, b) => a + Math.random() * (b - a), pick = a => a[Math.floor(Math.random() * a.length)], ri = (a, b) => Math.floor(r(a, b + 1));
+  const arr = pick(['single', 'single', 'single', 'umbrella', 'ring', 'tower']);
+  const style = pick(['rulings', 'rulings', 'rulings', 'parabolas', 'contours', 'solid', 'solidlines', 'dots']);
+  const st = {
+    ...DEF, format: S.format, scale: S.scale, transparent: S.transparent,
+    shape: pick(['ruled', 'ruled', 'circle', 'polygon', 'star', 'ring']), sides: ri(3, 9), inner: r(0.3, 0.7), shapeRot: ri(-45, 45),
+    h: pick([-1, 1]) * r(0.45, 1.2), skew: ri(55, 125), sx: 1, sy: Math.random() < 0.3 ? r(0.7, 1.3) : 1,
+    arr, copies: arr === 'umbrella' ? ri(3, 6) : arr === 'ring' ? ri(4, 10) : ri(5, 12),
+    spread: arr === 'tower' ? r(0.2, 0.5) : r(0.6, 1.2), twist: arr === 'single' ? 0 : ri(-40, 40), alt: Math.random() < 0.3,
+    style, density: style === 'solid' ? ri(20, 40) : style === 'dots' ? ri(14, 30) : ri(8, 30),
+    lineWidth: Math.round(r(0.6, 2.4) * 20) / 20, fade: Math.random() < 0.35 ? r(0.3, 0.8) : 0,
+    colorMode: pick(['families', 'height', 'sweep']),
+    yaw: ri(-60, 60), pitch: ri(12, 60), persp: r(0, 0.5),
+  };
+  Object.assign(st, PALETTES[pick(Object.keys(PALETTES))]);
+  applyState(st);
+}
+
+/* --- export --- */
+const toast = msg => { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast.h); toast.h = setTimeout(() => t.hidden = true, 2600); };
+function exportCanvas() {
+  const f = FORMATS[S.format], W = f.w * S.scale, H = f.h * S.scale;
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  drawScene(S, getGeo(), canvasSink(c.getContext('2d'), W, H), W, H, S.transparent);
+  return c;
+}
+const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+const crc32 = b => { let c = 0xFFFFFFFF; for (let i = 0; i < b.length; i++) c = CRC[(c ^ b[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+// embed the print DPI so layout apps place the image at the right physical size
+async function withDPI(blob, dpi) {
+  const buf = new Uint8Array(await blob.arrayBuffer());
+  const head = String.fromCharCode(...buf.subarray(0, Math.min(buf.length, 200)));
+  if (head.includes('pHYs')) return blob;
+  const ppm = Math.round(dpi / 0.0254), chunk = new Uint8Array(21), dv = new DataView(chunk.buffer);
+  dv.setUint32(0, 9); chunk.set([0x70, 0x48, 0x59, 0x73], 4); dv.setUint32(8, ppm); dv.setUint32(12, ppm); chunk[16] = 1;
+  dv.setUint32(17, crc32(chunk.subarray(4, 17)));
+  const out = new Uint8Array(buf.length + 21); out.set(buf.subarray(0, 33)); out.set(chunk, 33); out.set(buf.subarray(33), 54);
+  return new Blob([out], { type: 'image/png' });
+}
+function download(blob, name) {
+  const url = URL.createObjectURL(blob), a = document.createElement('a');
+  a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 3000);
+}
+const fileBase = () => { const f = FORMATS[S.format]; return `hypar-${S.format}-${f.w * S.scale}x${f.h * S.scale}`; };
+const makeSVG = () => { const f = FORMATS[S.format], sink = svgSink(f.w, f.h); drawScene(S, getGeo(), sink, f.w, f.h, S.transparent); return sink.done(); };
+
+$('#dlpng').addEventListener('click', () => {
+  exportCanvas().toBlob(async b => { download(await withDPI(b, FORMATS[S.format].dpi * S.scale), fileBase() + '.png'); toast('PNG saved'); }, 'image/png');
+});
+$('#cppng').addEventListener('click', async () => {
+  const c = exportCanvas();
+  try {
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': new Promise(res => c.toBlob(res, 'image/png')) })]);
+    toast('PNG copied to clipboard');
+  } catch (e) {
+    try { const b = await new Promise(res => c.toBlob(res, 'image/png')); await navigator.clipboard.write([new ClipboardItem({ 'image/png': b })]); toast('PNG copied to clipboard'); }
+    catch (e2) { toast('This browser blocked image copying. Use Download PNG instead.'); }
+  }
+});
+$('#dlsvg').addEventListener('click', () => { download(new Blob([makeSVG()], { type: 'image/svg+xml' }), fileBase().replace(/-\d+x\d+$/, '') + '.svg'); toast('SVG saved'); });
+$('#cpsvg').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText(makeSVG()); toast('SVG code copied. Paste it into Figma, Illustrator or a text file.'); }
+  catch (e) { toast('This browser blocked copying. Use Download SVG instead.'); }
+});
+$('#c-format').addEventListener('input', e => setKey('format', e.target.value));
+$('#c-scale').addEventListener('input', e => setKey('scale', parseInt(e.target.value, 10)));
+$('#c-transparent').addEventListener('input', e => setKey('transparent', e.target.checked));
+$('#rand').addEventListener('click', randomize);
+
+/* --- direct manipulation --- */
+let drag = null;
+cv.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY }; cv.setPointerCapture(e.pointerId); cv.classList.add('dragging'); });
+cv.addEventListener('pointermove', e => {
+  if (!drag) return;
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag.x = e.clientX; drag.y = e.clientY;
+  if (e.shiftKey) { S.panX = clamp(S.panX + dx / cv.clientWidth, -0.5, 0.5); S.panY = clamp(S.panY + dy / cv.clientHeight, -0.5, 0.5); }
+  else { S.yaw = wrap(S.yaw + dx * 0.5); S.pitch = clamp(S.pitch + dy * 0.4, -90, 90); }
+  syncControls(['yaw', 'pitch', 'panX', 'panY']); requestRender();
+});
+const endDrag = () => { if (drag) { drag = null; cv.classList.remove('dragging'); save(); } };
+cv.addEventListener('pointerup', endDrag); cv.addEventListener('pointercancel', endDrag);
+cv.addEventListener('wheel', e => { e.preventDefault(); S.zoom = clamp(S.zoom * Math.exp(-e.deltaY * 0.0015), 0.2, 4); syncControls(['zoom']); requestRender(); save(); }, { passive: false });
+
+buildPanel();
+syncControls();
+new ResizeObserver(fitCanvas).observe(stage);
+fitCanvas();
+</script>
+</body>
+</html>
