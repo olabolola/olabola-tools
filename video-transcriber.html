@@ -173,8 +173,7 @@
             margin-top: 4px;
             white-space: pre-wrap;
         }
-        .caption .c-ar { font-size: 22px; }
-        .caption .c-en { font-size: 16px; }
+        .caption span { font-size: 18px; }
         .player-msg {
             position: absolute;
             inset: 0;
@@ -259,12 +258,8 @@
             overflow: hidden;
             min-height: 40px;
         }
+        textarea.en { font-size: 17px; }
         textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
-        textarea.ar {
-            font-family: 'Geeza Pro', 'Noto Naskh Arabic', 'Segoe UI', Tahoma, sans-serif;
-            font-size: 20px;
-            line-height: 1.6;
-        }
 
         .toast {
             position: fixed;
@@ -289,7 +284,7 @@
 <body>
 <div class="page">
     <h1>Video Transcriber</h1>
-    <p class="sub">Slow a video down, loop the hard parts, and write a transcription and translation line by line. Everything stays in your browser.</p>
+    <p class="sub">Slow a video down, loop the hard parts, and write your English translation line by line. Everything stays in your browser.</p>
 
     <!-- ================= Loader ================= -->
     <section id="loader" class="card loader">
@@ -391,7 +386,7 @@
                     <label id="pitchLabel" title="Keep voices at normal pitch when slowed down">
                         <input type="checkbox" id="pitchChk" checked> Keep pitch
                     </label>
-                    <label title="Show your transcription/translation on top of the video">
+                    <label title="Show your translation on top of the video">
                         <input type="checkbox" id="captionChk"> Show my text on video
                     </label>
                     <label>
@@ -470,7 +465,7 @@
 
     const state = {
         source: null,      // { key, kind: 'file'|'yt'|'url', title, ytId?, url?, objectUrl? }
-        segments: [],      // [{ id, start, ar, en }] sorted by start
+        segments: [],      // [{ id, start, en }] sorted by start
         rate: 1,
         loopA: null,
         loopB: null,
@@ -769,7 +764,7 @@
     function normalizeSegments() {
         state.segments = state.segments
             .filter((s) => s && isFinite(+s.start))
-            .map((s) => ({ id: s.id || newId(), start: Math.max(0, +s.start), ar: s.ar || '', en: s.en || '' }));
+            .map((s) => ({ id: s.id || newId(), start: Math.max(0, +s.start), en: s.en || '' }));
         state.segments.sort((a, b) => a.start - b.start);
     }
     function segEnd(i) {
@@ -797,7 +792,7 @@
             toast('There’s already a line starting here');
             return;
         }
-        const seg = { id: newId(), start: t, ar: '', en: '' };
+        const seg = { id: newId(), start: t, en: '' };
         state.segments.push(seg);
         normalizeSegments();
         render();
@@ -885,33 +880,23 @@
                 button('🔁', 'Loop this line over and over', () => loopSegment(idx())),
                 button('⏱ Start = now', 'Move the start of this line to the current time', () => setSegStart(idx(), P.time())),
                 button('✕', 'Delete this line', () => {
-                    if ((seg.ar || seg.en) && !confirm('Delete this line and its text?')) return;
+                    if (seg.en && !confirm('Delete this line and its text?')) return;
                     state.segments.splice(idx(), 1);
                     render();
                     save();
                 }, 'del'),
             );
 
-            const ar = document.createElement('textarea');
-            ar.className = 'ar';
-            ar.dir = 'auto';
-            ar.lang = 'ar';
-            ar.rows = 1;
-            ar.placeholder = 'Transcription (Darja) — اكتب هنا';
-            ar.value = seg.ar;
-            ar.addEventListener('input', () => { seg.ar = ar.value; autosize(ar); save(); });
-
             const en = document.createElement('textarea');
             en.className = 'en';
             en.dir = 'auto';
             en.rows = 1;
-            en.placeholder = 'English translation';
+            en.placeholder = 'English translation of this line…';
             en.value = seg.en;
             en.addEventListener('input', () => { seg.en = en.value; autosize(en); save(); });
 
-            el.append(head, ar, en);
+            el.append(head, en);
             list.appendChild(el);
-            autosize(ar);
             autosize(en);
         });
         els.empty.hidden = state.segments.length > 0;
@@ -1021,7 +1006,6 @@
         const lines = [state.source.title, ''];
         state.segments.forEach((s, i) => {
             lines.push(`${i + 1}. [${fmt(s.start)} – ${fmt(segEnd(i))}]`);
-            if (s.ar.trim()) lines.push(s.ar.trim());
             if (s.en.trim()) lines.push(s.en.trim());
             lines.push('');
         });
@@ -1029,20 +1013,19 @@
     }
     function exportSrt() {
         return state.segments.map((s, i) => {
-            const text = [s.ar.trim(), s.en.trim()].filter(Boolean).join('\n') || '…';
+            const text = s.en.trim() || '…';
             return `${i + 1}\n${srtTime(s.start)} --> ${srtTime(segEnd(i))}\n${text}\n`;
         }).join('\n');
     }
     function exportHtmlTable() {
         const rows = state.segments.map((s, i) => `<tr><td>${i + 1}</td><td>${fmt(s.start)}</td>`
-            + `<td dir="auto" style="font-size:14pt">${escapeHtml(s.ar).replace(/\n/g, '<br>')}</td>`
             + `<td>${escapeHtml(s.en).replace(/\n/g, '<br>')}</td></tr>`).join('');
         return `<table border="1" cellpadding="6" style="border-collapse:collapse">`
-            + `<tr><th>#</th><th>Time</th><th>Transcription</th><th>Translation</th></tr>${rows}</table>`;
+            + `<tr><th>#</th><th>Time</th><th>Translation</th></tr>${rows}</table>`;
     }
     async function copyTable() {
         if (!state.segments.length) { toast('Nothing to copy yet'); return; }
-        const plain = state.segments.map((s, i) => `${fmt(s.start)}\t${s.ar.replace(/\n/g, ' ')}\t${s.en.replace(/\n/g, ' ')}`).join('\n');
+        const plain = state.segments.map((s, i) => `${fmt(s.start)}\t${s.en.replace(/\n/g, ' ')}`).join('\n');
         try {
             if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
                 await navigator.clipboard.write([new ClipboardItem({
@@ -1206,26 +1189,16 @@
     }
     let lastCaption = '';
     function renderCaption(seg) {
-        const show = els.captionChk.checked && seg && (seg.ar.trim() || seg.en.trim());
-        const key = show ? seg.ar + '\u0000' + seg.en : '';
+        const show = els.captionChk.checked && seg && seg.en.trim();
+        const key = show ? seg.en : '';
         if (key === lastCaption) return;
         lastCaption = key;
         els.caption.hidden = !show;
         els.caption.textContent = '';
         if (!show) return;
-        if (seg.ar.trim()) {
-            const a = document.createElement('span');
-            a.className = 'c-ar';
-            a.dir = 'auto';
-            a.textContent = seg.ar.trim();
-            els.caption.append(a, document.createElement('br'));
-        }
-        if (seg.en.trim()) {
-            const e = document.createElement('span');
-            e.className = 'c-en';
-            e.textContent = seg.en.trim();
-            els.caption.append(e);
-        }
+        const e = document.createElement('span');
+        e.textContent = seg.en.trim();
+        els.caption.append(e);
     }
 
     // ---------------------------------------------------------------- events
